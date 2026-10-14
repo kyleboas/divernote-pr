@@ -33,6 +33,7 @@ const repo = {
   'git status': '',
   'git rev-list': '2',
   'git rev-parse': SHA,
+  'gh pr list': '[]',
   'gh pr view': JSON.stringify({ state: 'MERGED', mergedAt: '2026-10-14T00:00:00Z' }),
 };
 
@@ -78,6 +79,25 @@ test('a working, closed, or empty issue is not merged', async () => {
   assert.match((await merge({ issue: issue({ state: 'closed' }), divernote })).status, /closed/);
   const { exec } = fake({ ...repo, 'git rev-list': '0' });
   assert.match((await merge({ issue: issue(), divernote }, { exec, exists: () => true })).status, /nothing that is not already on main/);
+});
+
+test('a pull request already merged at this commit closes the issue as merged', async () => {
+  const { exec, calls } = fake({ ...repo, 'git rev-list': '0', 'gh pr list': JSON.stringify([{ number: 5, url: 'https://github.com/o/r/pull/5', headRefOid: SHA }]) });
+  const { closed, divernote } = helpers();
+  const result = await merge({ issue: issue(), divernote }, { exec, exists: () => true });
+  assert.equal(result.status, '#5 was already merged. Closed the issue.');
+  assert.deepEqual(closed, [{ number: 5, url: 'https://github.com/o/r/pull/5' }]);
+  assert.ok(calls.some(line => line.startsWith('gh pr list --head feature/header --base main --state merged')));
+  assert.ok(!calls.some(line => line.startsWith('git push') || line.startsWith('gh pr create') || line.startsWith('gh pr merge')));
+});
+
+test('a merged pull request at an older commit does not close the issue', async () => {
+  const { exec, calls } = fake({ ...repo, 'gh pr list --head feature/header --base main --state merged': JSON.stringify([{ number: 5, headRefOid: 'b'.repeat(40) }]), 'gh pr list': '[]', 'gh pr create': 'https://github.com/o/r/pull/6' });
+  const { closed, divernote } = helpers();
+  const result = await merge({ issue: issue(), divernote }, { exec, exists: () => true });
+  assert.equal(result.status, 'Opened and merged #6 and closed the issue.');
+  assert.equal(closed[0].number, 6);
+  assert.ok(calls.some(line => line.startsWith('gh pr create')));
 });
 
 test('a conflict leaves the issue open and says so', async () => {

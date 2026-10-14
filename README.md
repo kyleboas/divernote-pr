@@ -5,6 +5,8 @@ request.
 
 - An issue Divernote already reviewed merges its reviewed pull request, the
   same as pressing Enter.
+- A pull request already merged at the worktree's commit (on GitHub, or by
+  the agent) only closes the issue as merged.
 - Otherwise, in the issue's worktree: uncommitted changes are committed
   (`/merge <message>` sets the message; the issue's first line is the
   default), the branch is pushed, and its open pull request is used. If it has

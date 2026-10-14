@@ -54,7 +54,17 @@ export async function merge({ args = '', issue, divernote }, { exec = run, exist
   if (!base) throw new Error('Could not find the repository\'s default branch.');
   if (branch === base) return { status: `The worktree is on ${base}, so there is nothing to merge.` };
 
-  if (await git(['status', '--porcelain'], 'Could not read the worktree')) {
+  // A pull request already merged at this commit, on GitHub or by the agent,
+  // only needs the issue closed as merged.
+  if (!await git(['status', '--porcelain'], 'Could not read the worktree')) {
+    const current = await git(['rev-parse', 'HEAD'], 'Could not read the commit');
+    const landed = JSON.parse(await gh(['pr', 'list', '--head', branch, '--base', base, '--state', 'merged', '--json', 'number,url,headRefOid', '--limit', '20'], 'Could not look for a merged pull request'))
+      .find(pullRequest => pullRequest.headRefOid === current);
+    if (landed) {
+      await divernote.closeMerged({ number: landed.number, url: landed.url });
+      return { status: `#${landed.number} was already merged. Closed the issue.` };
+    }
+  } else {
     await git(['add', '--all'], 'Could not stage the changes');
     await git(['commit', '-m', args.trim() || title(issue.text)], 'Could not commit the changes');
   }
